@@ -3,4 +3,4 @@ uvicorn
 sqlalchemy>=2.0
 asyncpg
 playwright
-
+playwright-stealth

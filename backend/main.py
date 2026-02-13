@@ -1,55 +1,79 @@
-from fastapi import FastAPI, Depends, HTTPException, Security, status
-from fastapi.security import APIKeyHeader
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import text
 import os
+from fastapi import FastAPI, Depends, HTTPException, Header
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from datetime import datetime
+from dotenv import load_dotenv
 
-# 内部ファイルのインポート
-from database import engine, Base, get_db
 import models
-from scraper import scrape_site  # 前回の修正で名前を合わせました
+import database  # database.py をインポート
+import scraper
 
-# --- ここが重要！ ---
-app = FastAPI(title="My Price Tracker API")
-# ------------------
-
-# API Keyの設定
-API_KEY_NAME = "X-API-KEY"
-api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
+# .envファイルを読み込む
+load_dotenv()
 API_KEY = os.getenv("API_KEY")
 
-async def get_api_key(api_key: str = Security(api_key_header)):
-    if api_key == API_KEY:
-        return api_key
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail="Could not validate credentials"
-    )
+app = FastAPI()
 
-# 起動時にテーブル作成
+# 非同期エンジンでのテーブル作成
 @app.on_event("startup")
 async def startup():
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    async with database.engine.begin() as conn:
+        await conn.run_sync(models.Base.metadata.create_all)
 
-@app.get("/db-test", dependencies=[Depends(get_api_key)])
-async def db_test(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(text("SELECT 1"))
-    return {"status": "connected", "result": result.scalar()}
-
-@app.get("/scrape", dependencies=[Depends(get_api_key)])
-async def run_scraper(url: str):
-    if not url.startswith("https://"):
-        raise HTTPException(status_code=400, detail="Invalid URL")
-    
-    result = await scrape_site(url)
-    
-    if result.get("status") == "error":
-        raise HTTPException(status_code=500, detail=result.get("message"))
-    
-    return result
+# APIキー認証のチェック
+def verify_api_key(x_api_key: str = Header(None)):
+    if x_api_key != API_KEY:
+        raise HTTPException(status_code=403, detail="Invalid API Key")
+    return x_api_key
 
 @app.get("/")
 def read_root():
-    return {"message": "Hello Tracker API"}
+    return {"message": "Price Tracker API is running"}
+
+@app.get("/scrape")
+async def scrape_and_save(
+    url: str, 
+    # database.py の get_db を直接使う
+    db: AsyncSession = Depends(database.get_db), 
+    api_key: str = Depends(verify_api_key)
+):
+    # 1. スクレイピング実行
+    result = await scraper.scrape_site(url)
+    
+    if result["status"] == "error":
+        raise HTTPException(status_code=500, detail=result["message"])
+
+    # 2. 非同期でのクエリ実行 (select文)
+    stmt = select(models.Item).where(models.Item.url == url)
+    res = await db.execute(stmt)
+    item = res.scalar_one_or_none()
+    
+    if not item:
+        # 新規商品ならItemテーブルに保存
+        item = models.Item(
+            name=result["name"],
+            url=url
+        )
+        db.add(item)
+        await db.commit() # 非同期なので await が必須
+        await db.refresh(item)
+
+    # 3. PriceHistory（価格履歴）を保存
+    price_history = models.PriceHistory(
+        item_id=item.id,
+        price=result["price"]
+        # fetched_at がエラーの原因なので、一旦削除するか created_at に変える
+        # もし models.py でカラムを定義していないなら、この2つだけでOK
+    )
+    db.add(price_history)
+    await db.commit() # 非同期なので await が必須
+
+    return {
+        "status": "success",
+        "item_id": item.id,
+        "name": item.name,
+        "current_price": result["price"],
+        "message": "Data saved successfully"
+    }
     

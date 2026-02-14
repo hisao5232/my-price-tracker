@@ -132,3 +132,20 @@ async def get_item_history(item_id: int, db: AsyncSession = Depends(database.get
         "item": item,
         "history": history
     }
+
+@app.delete("/items/{item_id}")
+async def delete_item(item_id: int, db: AsyncSession = Depends(get_db)):
+    # 1. 該当する商品を検索
+    stmt = select(models.Item).where(models.Item.id == item_id)
+    result = await db.execute(stmt)
+    item = result.scalar_one_or_none()
+    
+    if item is None:
+        raise HTTPException(status_code=404, detail="Item not found")
+    
+    # 2. 削除（関連する価格履歴もカスケード設定があれば自動で消えます）
+    await db.delete(item)
+    await db.commit()
+    
+    return {"status": "success", "message": f"Item {item_id} deleted"}
+    

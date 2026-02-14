@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-// グラフ用のコンポーネントをインポート
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 interface Item {
@@ -23,12 +22,10 @@ export default function Home() {
   const [inputUrl, setInputUrl] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // --- モーダル管理用の状態 ---
   const [showModal, setShowModal] = useState(false);
-  const [historyData, setHistoryData] = useState<PriceHistory[]>([]);
+  const [historyData, setHistoryData] = useState<any[]>([]);
   const [selectedItemName, setSelectedItemName] = useState("");
 
-  // 環境変数から取得
   const API_KEY = process.env.NEXT_PUBLIC_API_KEY;
   const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
@@ -48,13 +45,11 @@ export default function Home() {
     fetchItems();
   }, []);
 
-  // グラフデータを取得してモーダルを開く関数
   const openGraph = async (item: Item) => {
     setSelectedItemName(item.name);
     try {
       const response = await fetch(`${API_URL}/items/${item.id}/history`);
       const data = await response.json();
-      // Recharts用に日付フォーマットを整形
       const formattedData = data.history.map((h: any) => ({
         price: h.price,
         date: new Date(h.created_at).toLocaleDateString('ja-JP', { month: 'short', day: 'numeric' })
@@ -66,8 +61,7 @@ export default function Home() {
     }
   };
 
-  // 型を React.FormEvent<HTMLFormElement> に修正
-  const handleScrape = async (e: React.SubmitEvent<HTMLFormElement>) => {
+  const handleScrape = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!inputUrl) return;
     setIsSubmitting(true);
@@ -85,6 +79,28 @@ export default function Home() {
     }
   };
 
+  // --- 追加: 削除機能 ---
+  const deleteItem = async (itemId: number) => {
+    if (!confirm("この商品の追跡を停止（削除）してよろしいですか？")) return;
+
+    try {
+      const response = await fetch(`${API_URL}/items/${itemId}`, {
+        method: "DELETE",
+        headers: {
+          "x-api-key": API_KEY || "",
+        },
+      });
+
+      if (response.ok) {
+        await fetchItems(); // 一覧を再取得
+      } else {
+        alert("削除に失敗しました");
+      }
+    } catch (error) {
+      console.error("削除エラー:", error);
+    }
+  };
+
   if (loading) return <div className="p-8 text-center text-slate-500 font-sans">データを読み込み中...</div>;
 
   return (
@@ -95,7 +111,6 @@ export default function Home() {
           <p className="text-slate-500">価格推移をビジュアルで確認</p>
         </header>
 
-        {/* 登録フォーム (以前と同じ) */}
         <section className="mb-12 rounded-2xl bg-white p-6 shadow-sm border border-slate-200">
           <form onSubmit={handleScrape} className="flex flex-col gap-3 sm:flex-row">
             <input
@@ -111,13 +126,28 @@ export default function Home() {
           </form>
         </section>
 
-        {/* カードリスト */}
         <div className="grid gap-6 sm:grid-cols-2">
           {items.map((item) => (
-            <div key={item.id} className="flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm hover:shadow-md transition-shadow">
+            <div key={item.id} className="group relative flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm hover:shadow-md transition-shadow">
+              
+              {/* --- 追加: 削除ボタン (ホバー時に表示) --- */}
+              <button 
+                onClick={() => deleteItem(item.id)}
+                className="absolute right-3 top-3 z-10 rounded-full bg-white/90 p-2 text-slate-400 opacity-0 shadow-sm transition-all hover:bg-red-50 hover:text-red-600 group-hover:opacity-100"
+                title="追跡を停止"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              </button>
+
               <div className="p-5 flex-1">
-                <div className="mb-2 text-[10px] font-bold text-blue-500">{item.mercari_id}</div>
+                <div className="mb-2 text-[10px] font-bold text-blue-500 uppercase tracking-widest">{item.mercari_id}</div>
                 <h2 className="mb-4 line-clamp-2 text-lg font-bold leading-tight">{item.name}</h2>
+                <div className="flex items-center justify-between text-xs text-slate-500">
+                  <span>登録: {new Date(item.created_at).toLocaleDateString()}</span>
+                  <a href={item.url} target="_blank" rel="noopener noreferrer" className="font-bold text-blue-600 hover:underline">商品ページ ↗</a>
+                </div>
               </div>
               <button 
                 onClick={() => openGraph(item)}
@@ -130,7 +160,6 @@ export default function Home() {
         </div>
       </div>
 
-      {/* --- グラフモーダル --- */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
           <div className="w-full max-w-2xl rounded-3xl bg-white p-6 shadow-2xl">
@@ -147,7 +176,6 @@ export default function Home() {
                   <YAxis fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `¥${value.toLocaleString()}`} />
                   <Tooltip 
                     contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
-                    // value を (number | undefined) として受け取り、存在を確認してから処理する
                     formatter={(value: number | undefined) => {
                       if (value === undefined) return ["-", "価格"];
                       return [`¥${value.toLocaleString()}`, "価格"];

@@ -14,7 +14,6 @@ services:
       - tracker-internal
     labels:
       - "traefik.enable=true"
-      # ※適宜、お名前ドットコム等で設定した新しいサブドメインに変更してください
       - "traefik.http.routers.tracker-api.rule=Host(`api-tracker.go-pro-world.net`)"
       - "traefik.http.routers.tracker-api.entrypoints=websecure"
       - "traefik.http.routers.tracker-api.tls=true"
@@ -39,6 +38,20 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+
+  frontend:
+    build: ./frontend
+    container_name: tracker-frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+      - NEXT_PUBLIC_API_KEY=${NEXT_PUBLIC_API_KEY}
+    depends_on:
+      - tracker-backend
 
 networks:
   traefik-public:

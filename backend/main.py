@@ -1,6 +1,7 @@
 import os
 import re
 from fastapi import FastAPI, Depends, HTTPException, Header
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from dotenv import load_dotenv
@@ -14,6 +15,21 @@ load_dotenv()
 API_KEY = os.getenv("API_KEY")
 
 app = FastAPI()
+
+origins = [
+    "http://localhost:3000",
+    "http://210.131.216.110:3000",
+    "https://go-pro-world.net",
+    "https://*.pages.dev",       # Cloudflare Pagesのデフォルトドメイン
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], # 開発をスムーズにするため一旦すべて許可
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # 起動時にテーブルを作成（非同期対応）
 @app.on_event("startup")

@@ -134,7 +134,7 @@ async def get_item_history(item_id: int, db: AsyncSession = Depends(database.get
     }
 
 @app.delete("/items/{item_id}")
-async def delete_item(item_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_item(item_id: int, db: AsyncSession = Depends(database.get_db)):
     # 1. 該当する商品を検索
     stmt = select(models.Item).where(models.Item.id == item_id)
     result = await db.execute(stmt)

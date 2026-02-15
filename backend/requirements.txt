@@ -5,3 +5,4 @@ asyncpg
 playwright
 playwright-stealth
 python-dotenv
+requests

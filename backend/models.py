@@ -6,9 +6,10 @@ class Item(Base):
     __tablename__ = "items"
 
     id = Column(Integer, primary_key=True, index=True)
-    mercari_id = Column(String, unique=True, index=True) # メルカリの商品ID (m12345...)
+    mercari_id = Column(String, unique=True, index=True)
     name = Column(String)
     url = Column(String)
+    image_url = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 class PriceHistory(Base):

@@ -4,6 +4,8 @@ services:
     container_name: tracker-backend
     restart: always
     env_file: .env
+    ports:
+      - "8002:8000"
     environment:
       - DATABASE_URL=postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@tracker-db:5432/${DB_NAME}
     depends_on:

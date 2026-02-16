@@ -16,16 +16,10 @@ API_KEY = os.getenv("API_KEY")
 
 app = FastAPI()
 
-origins = [
-    "http://localhost:3000",
-    "http://210.131.216.110:3000",
-    "https://go-pro-world.net",
-    "https://*.pages.dev",       # Cloudflare Pagesのデフォルトドメイン
-]
-
+# CORS設定
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # 開発をスムーズにするため一旦すべて許可
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -64,27 +58,30 @@ async def scrape_and_save(
     item = res.scalar_one_or_none()
 
     if not item:
-        # --- ID抽出ロジックの強化 ---
-        # 通常商品: /item/m12345678901
-        # Shops商品: /shops/product/英数字
         m_match = re.search(r'item/(m\d{11})', url)
         s_match = re.search(r'shops/product/([a-zA-Z0-9]+)', url)
         
-        mercari_id = None
+        site_id = None
         if m_match:
-            mercari_id = m_match.group(1)
+            site_id = m_match.group(1)
         elif s_match:
-            mercari_id = s_match.group(1)
+            site_id = s_match.group(1)
 
-        # 新規商品ならItemテーブルに保存
+        # 新規商品ならItemテーブルに保存 (image_urlを追加)
         item = models.Item(
             name=result["name"],
             url=url,
-            mercari_id=mercari_id
+            site_id=site_id,
+            image_url=result.get("image_url") # scraperから画像URLを取得
         )
         db.add(item)
         await db.commit()
         await db.refresh(item)
+    else:
+        # すでに商品が存在し、画像URLが空の場合は更新する処理（既存データ対策）
+        if not item.image_url and result.get("image_url"):
+            item.image_url = result.get("image_url")
+            await db.commit()
 
     # 3. PriceHistory（価格履歴）を保存
     price_history = models.PriceHistory(
@@ -97,9 +94,10 @@ async def scrape_and_save(
     return {
         "status": "success",
         "item_id": item.id,
-        "mercari_id": item.mercari_id,
+        "site_id": item.site_id,
         "name": item.name,
         "current_price": result["price"],
+        "image_url": item.image_url,
         "message": "Data saved successfully"
     }
 
@@ -109,6 +107,7 @@ async def get_items(db: AsyncSession = Depends(database.get_db)):
     stmt = select(models.Item).order_by(models.Item.created_at.desc())
     result = await db.execute(stmt)
     items = result.scalars().all()
+    # SQLAlchemyモデルがimage_urlを持っていれば自動的に含まれます
     return items
 
 @app.get("/items/{item_id}/history")
@@ -135,7 +134,6 @@ async def get_item_history(item_id: int, db: AsyncSession = Depends(database.get
 
 @app.delete("/items/{item_id}")
 async def delete_item(item_id: int, db: AsyncSession = Depends(database.get_db)):
-    # 1. 該当する商品を検索
     stmt = select(models.Item).where(models.Item.id == item_id)
     result = await db.execute(stmt)
     item = result.scalar_one_or_none()
@@ -143,9 +141,7 @@ async def delete_item(item_id: int, db: AsyncSession = Depends(database.get_db))
     if item is None:
         raise HTTPException(status_code=404, detail="Item not found")
     
-    # 2. 削除（関連する価格履歴もカスケード設定があれば自動で消えます）
     await db.delete(item)
     await db.commit()
     
     return {"status": "success", "message": f"Item {item_id} deleted"}
-    

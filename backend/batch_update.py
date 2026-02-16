@@ -9,8 +9,8 @@ import scraper
 # 環境変数からDiscord Webhook URLを取得
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
 
-def send_discord_notification(item_name, old_price, new_price, item_url):
-    """Discordに価格変動を通知する"""
+def send_discord_notification(item_name, old_price, new_price, item_url, image_url=None):
+    """Discordに価格変動を画像付きで通知する"""
     if not DISCORD_WEBHOOK_URL:
         print("Discord Webhook URL is not set. Skipping notification.")
         return
@@ -20,6 +20,7 @@ def send_discord_notification(item_name, old_price, new_price, item_url):
     emoji = "📉" if diff < 0 else "📈"
     status_text = "値下がりしました！" if diff < 0 else "価格が変動しました。"
 
+    # メインのメッセージ
     content = (
         f"{emoji} **{status_text}**\n"
         f"**商品名:** {item_name}\n"
@@ -27,7 +28,17 @@ def send_discord_notification(item_name, old_price, new_price, item_url):
         f"**URL:** {item_url}"
     )
     
-    payload = {"content": content}
+    # Discordの「埋め込み(Embed)」機能を使って画像を表示
+    payload = {
+        "content": content,
+        "embeds": []
+    }
+
+    if image_url:
+        payload["embeds"].append({
+            "image": {"url": image_url}
+        })
+    
     try:
         response = requests.post(DISCORD_WEBHOOK_URL, json=payload)
         response.raise_for_status()
@@ -61,11 +72,22 @@ async def update_all_prices():
                 
                 if res["status"] == "success":
                     new_price = res["price"]
+                    current_image = res.get("image_url")
+                    
+                    # DBに画像URLがない場合はついでに更新しておく（既存データ救済用）
+                    if not item.image_url and current_image:
+                        item.image_url = current_image
                     
                     # 4. 通知判定（前回の価格が存在し、かつ価格が異なる場合）
                     if last_record and last_record.price != new_price:
                         print(f"Price change detected! ¥{last_record.price} -> ¥{new_price}")
-                        send_discord_notification(item.name, last_record.price, new_price, item.url)
+                        send_discord_notification(
+                            item.name, 
+                            last_record.price, 
+                            new_price, 
+                            item.url, 
+                            item.image_url or current_image
+                        )
                     
                     # 5. 価格履歴を保存
                     new_history = models.PriceHistory(
@@ -88,3 +110,4 @@ async def update_all_prices():
 
 if __name__ == "__main__":
     asyncio.run(update_all_prices())
+    

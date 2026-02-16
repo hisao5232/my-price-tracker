@@ -6,7 +6,7 @@ class Item(Base):
     __tablename__ = "items"
 
     id = Column(Integer, primary_key=True, index=True)
-    mercari_id = Column(String, unique=True, index=True)
+    site_id = Column(String, unique=True, index=True)
     name = Column(String)
     url = Column(String)
     image_url = Column(String, nullable=True)

@@ -71,15 +71,21 @@ async def scrape_and_save(
     db: AsyncSession = Depends(database.get_db),
     api_key: str = Depends(verify_api_key)
 ):
+    # 1. サイトをスクレイピング
     result = await scraper.scrape_site(url)
     if result["status"] == "error":
         raise HTTPException(status_code=500, detail=result["message"])
 
+    # 2. 該当アイテムがDBにあるか確認
     stmt = select(models.Item).where(models.Item.url == url)
     res = await db.execute(stmt)
     item = res.scalar_one_or_none()
 
+    new_price = result["price"]
+
+    # --- ここからロジック修正 ---
     if not item:
+        # 新規アイテム登録
         m_match = re.search(r'item/(m\d{11})', url)
         s_match = re.search(r'shops/product/([a-zA-Z0-9]+)', url)
         site_id = m_match.group(1) if m_match else (s_match.group(1) if s_match else None)
@@ -93,11 +99,33 @@ async def scrape_and_save(
         db.add(item)
         await db.commit()
         await db.refresh(item)
+        
+        # 初回登録時は必ず履歴を保存
+        price_history = models.PriceHistory(item_id=item.id, price=new_price)
+        db.add(price_history)
+        await db.commit()
+        return {"status": "success", "message": "New item added with price", "name": item.name}
     
-    price_history = models.PriceHistory(item_id=item.id, price=result["price"])
-    db.add(price_history)
-    await db.commit()
-    return {"status": "success", "name": item.name}
+    else:
+        # 既存アイテムの場合：最新の価格履歴を1件取得して比較
+        stmt_history = select(models.PriceHistory)\
+            .where(models.PriceHistory.item_id == item.id)\
+            .order_by(models.PriceHistory.created_at.desc())\
+            .limit(1)
+        res_history = await db.execute(stmt_history)
+        latest_history = res_history.scalar_one_or_none()
+
+        # 最新価格と異なる場合のみ保存（あるいは履歴が一件もない場合）
+        if latest_history is None or latest_history.price != new_price:
+            price_history = models.PriceHistory(item_id=item.id, price=new_price)
+            db.add(price_history)
+            await db.commit()
+            print(f"DEBUG: Price updated for {item.name}: {new_price}")
+            return {"status": "success", "message": "Price updated", "name": item.name}
+        else:
+            # 価格が変わっていない
+            print(f"DEBUG: No price change for {item.name}: {new_price}")
+            return {"status": "success", "message": "No price change", "name": item.name}
 
 @app.get("/items/{item_id}/history")
 async def get_item_history(item_id: int, db: AsyncSession = Depends(database.get_db)):

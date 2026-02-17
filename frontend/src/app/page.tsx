@@ -51,10 +51,19 @@ export default function Home() {
     try {
       const response = await fetch(`${API_URL}/items/${item.id}/history`);
       const data = await response.json();
-      const formattedData = data.history.map((h: any) => ({
-        price: h.price,
-        date: new Date(h.created_at).toLocaleDateString('ja-JP', { month: 'short', day: 'numeric' })
-      }));
+      const formattedData = data.history.map((h: any) => {
+        const dateObj = new Date(h.created_at);
+        return {
+          price: h.price,
+          // ここを XAxis の dataKey に使う（時間まで含める）
+          fullDate: dateObj.toLocaleString('ja-JP', { 
+            month: 'numeric', 
+            day: 'numeric', 
+            hour: '2-digit', 
+            minute: '2-digit' 
+          })
+        };
+      });
       setHistoryData(formattedData);
       setShowModal(true);
     } catch (error) {
@@ -214,11 +223,12 @@ export default function Home() {
                 <LineChart data={historyData}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                   <XAxis 
-                    dataKey="date" 
-                    fontSize={11} 
+                    dataKey="fullDate" // 時間入りのデータを軸にする
+                    fontSize={10} 
                     tickLine={false} 
                     axisLine={false} 
                     tick={{ fill: '#94a3b8' }}
+                    minTickGap={20} // ラベル同士が重ならないように隙間を空ける
                   />
                   <YAxis 
                     fontSize={11} 
@@ -228,10 +238,18 @@ export default function Home() {
                     tickFormatter={(value) => `¥${value.toLocaleString()}`} 
                   />
                   <Tooltip 
-                    contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04)' }}
-                    formatter={(value: number | undefined) => {
-                      if (value === undefined) return ["-", "価格"];
-                      return [`¥${value.toLocaleString()}`, "現在の価格"];
+                    // labelKey は削除
+                    labelFormatter={(label) => <span className="font-bold text-slate-700">{label}</span>}
+                    contentStyle={{ 
+                      borderRadius: '16px', 
+                      border: 'none', 
+                      boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04)',
+                      padding: '12px'
+                    }}
+                    formatter={(value: any) => {
+                      // 型エラー回避のため value: any にし、中身を確認
+                      const price = Number(value);
+                      return [`¥${price.toLocaleString()}`, "価格"];
                     }}
                   />
                   <Line 
@@ -241,6 +259,7 @@ export default function Home() {
                     strokeWidth={4} 
                     dot={{ r: 5, fill: '#2563eb', strokeWidth: 2, stroke: '#fff' }} 
                     activeDot={{ r: 8, strokeWidth: 0 }} 
+                    animationDuration={500}
                   />
                 </LineChart>
               </ResponsiveContainer>

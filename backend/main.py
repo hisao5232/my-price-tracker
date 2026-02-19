@@ -190,4 +190,11 @@ async def get_item_history(item_id: int, db: AsyncSession = Depends(database.get
     stmt_history = select(models.PriceHistory).where(models.PriceHistory.item_id == item_id).order_by(models.PriceHistory.created_at.asc())
     res_history = await db.execute(stmt_history)
     return {"item": item, "history": res_history.scalars().all()}
-    
+
+@app.get("/queries")
+async def get_queries(db: AsyncSession = Depends(database.get_db)):
+    # 登録されたキーワードを新しい順に取得
+    stmt = select(models.SearchQuery).order_by(models.SearchQuery.created_at.desc())
+    result = await db.execute(stmt)
+    return result.scalars().all()
+        

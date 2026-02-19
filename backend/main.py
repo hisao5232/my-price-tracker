@@ -4,6 +4,7 @@ from fastapi import FastAPI, Depends, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert # 一括保存(UPSERT)用
 from dotenv import load_dotenv
 
 import models
@@ -39,56 +40,54 @@ def verify_api_key(x_api_key: str = Header(None)):
 def read_root():
     return {"message": "Price Tracker API is running"}
 
-# --- 削除機能を上に持ってくる（確実に認識させるため） ---
+# --- アイテム削除 ---
 @app.delete("/items/{item_id}")
 async def delete_item(
     item_id: int, 
     db: AsyncSession = Depends(database.get_db),
     api_key: str = Depends(verify_api_key)
 ):
-    print(f"DEBUG: DELETE request for ID {item_id}")
     stmt = select(models.Item).where(models.Item.id == item_id)
     result = await db.execute(stmt)
     item = result.scalar_one_or_none()
     
     if item is None:
-        raise HTTPException(status_code=404, detail=f"Item {item_id} not found in DB")
+        raise HTTPException(status_code=404, detail=f"Item {item_id} not found")
     
     await db.delete(item)
     await db.commit()
     return {"status": "success", "message": f"Item {item_id} deleted"}
 
-# --- その他のルート ---
+# --- アイテム一覧 ---
 @app.get("/items")
 async def get_items(db: AsyncSession = Depends(database.get_db)):
     stmt = select(models.Item).order_by(models.Item.created_at.desc())
     result = await db.execute(stmt)
     return result.scalars().all()
 
+# --- 単体URLのスクレイピングと価格更新 ---
 @app.get("/scrape")
 async def scrape_and_save(
     url: str,
     db: AsyncSession = Depends(database.get_db),
     api_key: str = Depends(verify_api_key)
 ):
-    # 1. サイトをスクレイピング
+    # scraper.py の個別スクレイピング関数（既存）を呼び出し
+    # ※検索用とは別に scrape_site 関数がある前提です
     result = await scraper.scrape_site(url)
     if result["status"] == "error":
         raise HTTPException(status_code=500, detail=result["message"])
 
-    # 2. 該当アイテムがDBにあるか確認
     stmt = select(models.Item).where(models.Item.url == url)
     res = await db.execute(stmt)
     item = res.scalar_one_or_none()
 
     new_price = result["price"]
 
-    # --- ここからロジック修正 ---
     if not item:
-        # 新規アイテム登録
+        # 新規登録
         m_match = re.search(r'item/(m\d{11})', url)
-        s_match = re.search(r'shops/product/([a-zA-Z0-9]+)', url)
-        site_id = m_match.group(1) if m_match else (s_match.group(1) if s_match else None)
+        site_id = m_match.group(1) if m_match else None
 
         item = models.Item(
             name=result["name"],
@@ -100,14 +99,13 @@ async def scrape_and_save(
         await db.commit()
         await db.refresh(item)
         
-        # 初回登録時は必ず履歴を保存
         price_history = models.PriceHistory(item_id=item.id, price=new_price)
         db.add(price_history)
         await db.commit()
-        return {"status": "success", "message": "New item added with price", "name": item.name}
+        return {"status": "success", "message": "New item added", "item": item}
     
     else:
-        # 既存アイテムの場合：最新の価格履歴を1件取得して比較
+        # 価格更新チェック
         stmt_history = select(models.PriceHistory)\
             .where(models.PriceHistory.item_id == item.id)\
             .order_by(models.PriceHistory.created_at.desc())\
@@ -115,17 +113,71 @@ async def scrape_and_save(
         res_history = await db.execute(stmt_history)
         latest_history = res_history.scalar_one_or_none()
 
-        # 最新価格と異なる場合のみ保存（あるいは履歴が一件もない場合）
         if latest_history is None or latest_history.price != new_price:
             price_history = models.PriceHistory(item_id=item.id, price=new_price)
             db.add(price_history)
             await db.commit()
-            print(f"DEBUG: Price updated for {item.name}: {new_price}")
-            return {"status": "success", "message": "Price updated", "name": item.name}
-        else:
-            # 価格が変わっていない
-            print(f"DEBUG: No price change for {item.name}: {new_price}")
-            return {"status": "success", "message": "No price change", "name": item.name}
+            return {"status": "success", "message": "Price updated", "new_price": new_price}
+        
+        return {"status": "success", "message": "No price change"}
+
+# --- キーワード検索 & DB一括登録 (116件対応版) ---
+@app.get("/search")
+async def search_and_register(
+    q: str, 
+    db: AsyncSession = Depends(database.get_db),
+    api_key: str = Depends(verify_api_key)
+):
+    # 1. 最強のスクレイピング・エンジンで全件取得
+    scraped_items = await scraper.search_items(q)
+    
+    registered_items = []
+    
+    for item_data in scraped_items:
+        # DBに既にあるかURLでチェック
+        stmt = select(models.Item).where(models.Item.url == item_data['url'])
+        res = await db.execute(stmt)
+        item = res.scalar_one_or_none()
+        
+        if not item:
+            # 新規アイテムとして保存
+            item = models.Item(
+                name=item_data['name'],
+                url=item_data['url'],
+                site_id=item_data['id'],
+                image_url=item_data.get('image_url') # サムネイルも保存！
+            )
+            db.add(item)
+            await db.flush() # ID確定のためにflush
+            
+            # 初回価格履歴
+            price_history = models.PriceHistory(item_id=item.id, price=item_data['price'])
+            db.add(price_history)
+            
+            registered_items.append(item)
+    
+    await db.commit()
+
+    # 2. 検索クエリの履歴管理
+    stmt_q = select(models.SearchQuery).where(models.SearchQuery.keyword == q)
+    res_q = await db.execute(stmt_q)
+    query = res_q.scalar_one_or_none()
+    
+    current_ids = [it['id'] for it in scraped_items]
+    if not query:
+        query = models.SearchQuery(keyword=q, last_seen_ids=current_ids)
+        db.add(query)
+    else:
+        query.last_seen_ids = current_ids # 最新の状態に更新
+    
+    await db.commit()
+
+    return {
+        "status": "success", 
+        "total_scraped": len(scraped_items),
+        "new_registered": len(registered_items),
+        "items": scraped_items # フロントエンド表示用
+    }
 
 @app.get("/items/{item_id}/history")
 async def get_item_history(item_id: int, db: AsyncSession = Depends(database.get_db)):

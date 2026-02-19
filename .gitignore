@@ -22,3 +22,6 @@ build/
 Thumbs.db
 
 *.log
+
+cron.log.1.gz
+debug_view.png

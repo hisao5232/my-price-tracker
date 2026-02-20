@@ -197,4 +197,12 @@ async def get_queries(db: AsyncSession = Depends(database.get_db)):
     stmt = select(models.SearchQuery).order_by(models.SearchQuery.created_at.desc())
     result = await db.execute(stmt)
     return result.scalars().all()
-        
+
+@app.get("/items/keyword/{keyword}")
+async def get_items_by_keyword(keyword: str, db: AsyncSession = Depends(database.get_db)):
+    # キーワードを部分一致（LIKE）で検索して、紐づく商品を取得
+    # もしくは SearchQuery の last_seen_ids に基づく設計も可能ですが、
+    # シンプルに商品名の部分一致で取得するのが確実です
+    stmt = select(models.Item).where(models.Item.name.ilike(f"%{keyword}%")).order_by(models.Item.created_at.desc())
+    result = await db.execute(stmt)
+    return result.scalars().all()

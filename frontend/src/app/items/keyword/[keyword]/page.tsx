@@ -1,9 +1,16 @@
 "use client";
-export const runtime = "edge";
+// Edge runtime でエラーが出る場合は一旦コメントアウトして標準ランタイムを試す
+// export const runtime = "edge"; 
 export const dynamic = "force-dynamic";
+
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+
+// ビルド時にこのページを生成しようとするのを防ぐための空の設定
+export async function generateStaticParams() {
+  return [];
+}
 
 interface Item {
   id: number;

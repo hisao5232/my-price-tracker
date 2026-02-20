@@ -1,79 +1,77 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation"; // 追加
+import { useState, useEffect } from "react";
 import Link from "next/link";
 
 export default function SearchPage() {
   const [keyword, setKeyword] = useState("");
-  const [isSearching, setIsSearching] = useState(false);
-  const router = useRouter(); // 追加
-
+  const [savedKeywords, setSavedKeywords] = useState<{id: number, keyword: string}[]>([]);
   const API_URL = process.env.NEXT_PUBLIC_API_URL;
-  const API_KEY = process.env.NEXT_PUBLIC_API_KEY;
 
-  const handleSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // 保存済みキーワードの読み込み
+  const fetchKeywords = async () => {
+    const res = await fetch(`${API_URL}/keywords`);
+    const data = await res.json();
+    setSavedKeywords(data);
+  };
+
+  useEffect(() => { fetchKeywords(); }, []);
+
+  // キーワード登録処理
+  const handleRegister = async () => {
     if (!keyword) return;
-
-    setIsSearching(true);
-    try {
-      // バックエンドの /search はスクレイピング + DB保存まで行う
-      const response = await fetch(`${API_URL}/search?q=${encodeURIComponent(keyword)}`, {
-        headers: { "x-api-key": API_KEY || "" }
-      });
-      
-      if (response.ok) {
-        alert("キーワードを登録し、初回スクレイピングを完了しました！");
-        router.push("/"); // 保存されたカードを確認するためにホームへ戻る
-      }
-    } catch (error) {
-      alert("検索・保存に失敗しました");
-    } finally {
-      setIsSearching(false);
-    }
+    await fetch(`${API_URL}/keywords`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ keyword }),
+    });
+    setKeyword("");
+    fetchKeywords(); // リストを更新
   };
 
   return (
-    <main className="min-h-screen bg-slate-50">
-      {/* ナビゲーション */}
-      <nav className="bg-white border-b border-slate-200 p-4 sticky top-0 z-30">
-        <div className="max-w-4xl mx-auto flex justify-between items-center">
-          <Link href="/" className="text-xl font-black text-blue-600">Price Tracker</Link>
-          <div className="flex gap-4">
-            <Link href="/" className="text-sm font-bold text-slate-500">ホーム</Link>
-            <Link href="/search" className="text-sm font-bold text-blue-600">キーワード登録</Link>
-          </div>
+    <main className="min-h-screen bg-slate-50 p-8 font-sans">
+      <div className="max-w-4xl mx-auto">
+        <h1 className="text-3xl font-black text-slate-900 mb-8 italic">MONITORING BOARD</h1>
+
+        {/* 入力エリア */}
+        <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 mb-12 flex gap-4">
+          <input 
+            type="text" 
+            value={keyword}
+            onChange={(e) => setKeyword(e.target.value)}
+            placeholder="例: DSライト 27.5"
+            className="flex-1 bg-slate-100 border-none rounded-2xl px-6 py-4 focus:ring-2 focus:ring-blue-500 outline-none font-bold"
+          />
+          <button 
+            onClick={handleRegister}
+            className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-black hover:bg-blue-700 transition-all active:scale-95"
+          >
+            登録
+          </button>
         </div>
-      </nav>
 
-      <div className="mx-auto max-w-2xl p-6">
-        <header className="mb-8 text-center">
-          <h2 className="text-2xl font-bold text-slate-800">新しい監視ワードを登録</h2>
-          <p className="text-slate-500 text-sm">登録するとメルカリから116件を取得し、監視を開始します</p>
-        </header>
-
-        <section className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
-          <form onSubmit={handleSearch} className="flex flex-col gap-4">
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-400 ml-1">検索キーワード</label>
-              <input
-                type="text"
-                placeholder="例: アシックス DSライト 27.5"
-                value={keyword}
-                onChange={(e) => setKeyword(e.target.value)}
-                className="w-full rounded-2xl border border-slate-300 px-5 py-4 outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-500 transition-all text-lg"
-              />
-            </div>
-            <button 
-              type="submit" 
-              disabled={isSearching}
-              className="w-full rounded-2xl bg-blue-600 py-4 font-black text-white hover:bg-blue-700 disabled:bg-slate-300 shadow-lg shadow-blue-200 transition-all"
+        {/* キーワードカード一覧 */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {savedKeywords.map((k) => (
+            <Link 
+              key={k.id} 
+              href={`/items/keyword/${encodeURIComponent(k.keyword)}`}
+              className="group bg-white p-8 rounded-3xl border border-slate-200 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 relative overflow-hidden"
             >
-              {isSearching ? "116件を解析中..." : "このワードを監視登録する"}
-            </button>
-          </form>
-        </section>
+              <div className="relative z-10">
+                <span className="text-xs font-black text-blue-600 uppercase tracking-widest">Monitoring</span>
+                <h2 className="text-2xl font-black text-slate-800 mt-2">{k.keyword}</h2>
+              </div>
+              {/* 背景の装飾的なアイコン */}
+              <div className="absolute -right-4 -bottom-4 text-slate-50 group-hover:text-blue-50 transition-colors">
+                 <svg xmlns="http://www.w3.org/2000/svg" className="h-24 w-24" fill="currentColor" viewBox="0 0 24 24">
+                   <path d="M10 18a7.952 7.952 0 0 0 4.897-1.688l4.396 4.396 1.414-1.414-4.396-4.396A7.952 7.952 0 0 0 18 10c0-4.411-3.589-8-8-8s-8 3.589-8 8 3.589 8 8 8zm0-14c3.309 0 6 2.691 6 6s-2.691 6-6 6-6-2.691-6-6 2.691-6 6-6z"/>
+                 </svg>
+              </div>
+            </Link>
+          ))}
+        </div>
       </div>
     </main>
   );

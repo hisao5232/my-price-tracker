@@ -206,3 +206,19 @@ async def get_items_by_keyword(keyword: str, db: AsyncSession = Depends(database
     stmt = select(models.Item).where(models.Item.name.ilike(f"%{keyword}%")).order_by(models.Item.created_at.desc())
     result = await db.execute(stmt)
     return result.scalars().all()
+
+# キーワード一覧を取得
+@app.get("/keywords")
+async def get_keywords(db: AsyncSession = Depends(database.get_db)):
+    stmt = select(models.SearchQuery).order_by(models.SearchQuery.created_at.desc())
+    result = await db.execute(stmt)
+    return result.scalars().all()
+
+# 新しいキーワードを登録
+@app.post("/keywords")
+async def add_keyword(data: dict, db: AsyncSession = Depends(database.get_db)):
+    new_query = models.SearchQuery(keyword=data["keyword"])
+    db.add(new_query)
+    await db.commit()
+    return {"message": "Keyword added"}
+    

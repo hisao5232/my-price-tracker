@@ -1,6 +1,6 @@
 import os
 import re
-from fastapi import FastAPI, Depends, HTTPException, Header
+from fastapi import FastAPI, Depends, HTTPException, Header, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 import models
 import database
 import scraper
+import asyncio
 
 load_dotenv()
 API_KEY = os.getenv("API_KEY")
@@ -214,11 +215,80 @@ async def get_keywords(db: AsyncSession = Depends(database.get_db)):
     result = await db.execute(stmt)
     return result.scalars().all()
 
-# 新しいキーワードを登録
+# キーワード登録 + 即時スクレイピング開始
 @app.post("/keywords")
-async def add_keyword(data: dict, db: AsyncSession = Depends(database.get_db)):
-    new_query = models.SearchQuery(keyword=data["keyword"])
+async def add_keyword(
+    data: dict, 
+    background_tasks: BackgroundTasks, # ここでBackgroundTasksを受け取る
+    db: AsyncSession = Depends(database.get_db)
+):
+    keyword = data["keyword"]
+    
+    # 1. まずはDBにキーワードを保存
+    new_query = models.SearchQuery(keyword=keyword)
     db.add(new_query)
     await db.commit()
-    return {"message": "Keyword added"}
     
+    # 2. スクレイピングをバックグラウンドで開始
+    # ユーザーへのレスポンスを待たせずに裏で処理を開始させる
+    background_tasks.add_task(run_scraping_logic, keyword)
+    
+    return {"message": f"Keyword '{keyword}' added and scraping started."}
+
+# --- バックグラウンドで実行される実際の処理 ---
+async def run_scraping_logic(keyword: str): # string ではなく str
+    print(f"Starting scraping for: {keyword}")
+    
+    # データベースセッションを新しく作成して処理を行う必要があります
+    # (BackgroundTasksはリクエストが終わった後に動くため、元のdbセッションは使えない場合があるため)
+    async with database.async_session() as session:
+        try:
+            # すでに定義されているスクレイピングロジックを再利用
+            # ここでは search_and_register と同等の処理を関数化して呼び出すのが理想です
+            scraped_items = await scraper.search_items(keyword)
+            
+            for item_data in scraped_items:
+                stmt = select(models.Item).where(models.Item.url == item_data['url'])
+                res = await session.execute(stmt)
+                item = res.scalar_one_or_none()
+                
+                if not item:
+                    item = models.Item(
+                        name=item_data['name'],
+                        url=item_data['url'],
+                        site_id=item_data['id'],
+                        image_url=item_data.get('image_url')
+                    )
+                    session.add(item)
+                    await session.flush()
+                    
+                    price_history = models.PriceHistory(item_id=item.id, price=item_data['price'])
+                    session.add(price_history)
+            
+            # SearchQuery側の last_seen_ids も更新
+            stmt_q = select(models.SearchQuery).where(models.SearchQuery.keyword == keyword)
+            res_q = await session.execute(stmt_q)
+            query = res_q.scalar_one_or_none()
+            
+            current_ids = [it['id'] for it in scraped_items]
+            if query:
+                query.last_seen_ids = current_ids
+            
+            await session.commit()
+            print(f"Finished scraping for: {keyword}. {len(scraped_items)} items processed.")
+            
+        except Exception as e:
+            print(f"Error during background scraping: {e}")
+            await session.rollback()
+
+@app.delete("/keywords/{id}")
+async def delete_keyword(id: int, db: AsyncSession = Depends(database.get_db)):
+    stmt = select(models.SearchQuery).where(models.SearchQuery.id == id)
+    result = await db.execute(stmt)
+    query = result.scalar_one_or_none()
+    if not query:
+        raise HTTPException(status_code=404, detail="Not found")
+    await db.delete(query)
+    await db.commit()
+    return {"message": "Deleted"}
+

@@ -11,7 +11,7 @@ env/
 db_data/
 letsencrypt/
 
-# Node.js (Next.js追加時用)
+# Node.js (Next.js追加用)
 node_modules/
 .next/
 out/

@@ -1,38 +1,38 @@
 "use client";
-// Edge runtime でエラーが出る場合は一旦コメントアウトして標準ランタイムを試す
-// export const runtime = "edge"; 
-export const dynamic = "force-dynamic";
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 
-// ビルド時にこのページを生成しようとするのを防ぐための空の設定
-export async function generateStaticParams() {
-  return [];
-}
+// Route Segment Config
+export const dynamic = "force-dynamic";
 
 interface Item {
   id: number;
   name: string;
   url: string;
-  price?: number; // DBの構造に合わせて調整
+  price?: number;
   image_url?: string;
   created_at: string;
 }
 
 export default function KeywordItemsPage() {
   const params = useParams();
-  const keyword = decodeURIComponent(params.keyword as string);
+  // params.keyword が存在するかチェック
+  const keyword = params?.keyword ? decodeURIComponent(params.keyword as string) : "";
+  
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
   useEffect(() => {
+    if (!keyword) return;
+
     const fetchKeywordItems = async () => {
       try {
         const response = await fetch(`${API_URL}/items/keyword/${encodeURIComponent(keyword)}`);
+        if (!response.ok) throw new Error('Fetch failed');
         const data = await response.json();
         setItems(data);
       } catch (error) {
@@ -46,7 +46,6 @@ export default function KeywordItemsPage() {
 
   return (
     <main className="min-h-screen bg-slate-50 font-sans text-slate-900">
-      {/* ナビゲーション */}
       <nav className="bg-white/80 backdrop-blur-md border-b border-slate-200 p-4 sticky top-0 z-30">
         <div className="max-w-6xl mx-auto flex justify-between items-center">
           <div className="flex items-center gap-4">
@@ -60,7 +59,7 @@ export default function KeywordItemsPage() {
             </h1>
           </div>
           <span className="bg-blue-600 text-white text-xs font-bold px-3 py-1 rounded-full">
-            {items.length} Items Found
+            {items.length} Items
           </span>
         </div>
       </nav>
@@ -69,7 +68,7 @@ export default function KeywordItemsPage() {
         {loading ? (
           <div className="flex flex-col items-center justify-center py-40 gap-4">
             <div className="animate-spin h-10 w-10 border-4 border-blue-600 border-t-transparent rounded-full"></div>
-            <p className="text-slate-400 font-bold animate-pulse">データベースから抽出中...</p>
+            <p className="text-slate-400 font-bold">データを読み込み中...</p>
           </div>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
@@ -81,52 +80,22 @@ export default function KeywordItemsPage() {
                 rel="noopener noreferrer"
                 className="group bg-white rounded-2xl overflow-hidden border border-slate-200 shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col"
               >
-                {/* 画像エリア */}
                 <div className="relative aspect-square overflow-hidden bg-slate-100">
                   {item.image_url ? (
-                    <img 
-                      src={item.image_url} 
-                      alt="" 
-                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-                      loading="lazy"
-                    />
+                    <img src={item.image_url} alt="" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-slate-300 italic text-xs">No Image</div>
                   )}
-                  {/* ホバー時に現れるオーバーレイ */}
-                  <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                    <span className="bg-white text-slate-900 text-[10px] font-black px-3 py-1.5 rounded-full shadow-lg">
-                      OPEN MERCARI
-                    </span>
-                  </div>
                 </div>
-
-                {/* 情報エリア */}
-                <div className="p-3 flex flex-col flex-1 justify-between">
-                  <h4 className="text-[11px] font-bold text-slate-700 line-clamp-2 leading-tight mb-2 group-hover:text-blue-600 transition-colors">
-                    {item.name}
-                  </h4>
+                <div className="p-3 flex flex-col flex-1">
+                  <h4 className="text-[11px] font-bold text-slate-700 line-clamp-2 leading-tight mb-2">{item.name}</h4>
                   <div className="flex items-center justify-between mt-auto">
-                    <p className="text-sm font-black text-blue-600 italic">
-                      {/* 価格表示（もしDBにあれば） */}
-                      {item.price ? `¥${item.price.toLocaleString()}` : '---'}
-                    </p>
-                    <span className="text-[9px] text-slate-400 font-medium">
-                      {new Date(item.created_at).toLocaleDateString()}
-                    </span>
+                    <p className="text-sm font-black text-blue-600 italic">{item.price ? `¥${item.price.toLocaleString()}` : '---'}</p>
+                    <span className="text-[9px] text-slate-400">{new Date(item.created_at).toLocaleDateString()}</span>
                   </div>
                 </div>
               </a>
             ))}
-          </div>
-        )}
-
-        {!loading && items.length === 0 && (
-          <div className="text-center py-40">
-            <p className="text-slate-400 font-bold">該当する商品はまだ登録されていません。</p>
-            <Link href="/search" className="text-blue-600 hover:underline mt-2 inline-block">
-              今すぐスクレイピングを実行
-            </Link>
           </div>
         )}
       </div>

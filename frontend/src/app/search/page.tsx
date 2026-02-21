@@ -105,7 +105,12 @@ export default function SearchPage() {
             type="text"
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleRegister()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault(); // ← これが「?」を出すリロードを阻止する決定打です！
+                handleRegister();
+              }
+            }}
             placeholder="例: DSライト 27.5"
             className="flex-1 bg-transparent border-none rounded-2xl px-6 py-4 outline-none font-bold text-lg placeholder:text-slate-300"
           />

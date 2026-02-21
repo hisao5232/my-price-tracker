@@ -42,9 +42,12 @@ export default function SearchPage() {
   }, [API_URL]);
 
   // キーワード登録処理
-  const handleRegister = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault(); // これが「勝手にページ更新（URLに?を付ける）」を防ぎます
+  const handleRegister = async (e?: React.BaseSyntheticEvent) => {
+    // ここでブラウザの標準動作（ページリフレッシュ）を確実に阻止します
+    if (e) e.preventDefault(); 
+
     if (!keyword.trim() || isRegistering || !API_URL) return;
+    
     setIsRegistering(true);
     try {
       const res = await fetch(`${API_URL}/keywords`, {
@@ -55,7 +58,7 @@ export default function SearchPage() {
       
       if (res.ok) {
         setKeyword("");
-        await fetchKeywords(); // リストを最新に更新
+        await fetchKeywords(); 
       } else {
         const errorData = await res.json();
         alert(`登録に失敗しました: ${errorData.detail || 'Unknown error'}`);
@@ -107,7 +110,9 @@ export default function SearchPage() {
             onChange={(e) => setKeyword(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
-                e.preventDefault(); // ← これが「?」を出すリロードを阻止する決定打です！
+                // 1. まずブラウザの「ページをリロードして送信する」という野性的な動きを殺す
+                e.preventDefault(); 
+                // 2. その上で、JavaScriptの関数（fetch）だけを静かに実行する
                 handleRegister();
               }
             }}

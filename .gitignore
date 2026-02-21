@@ -11,7 +11,7 @@ env/
 db_data/
 letsencrypt/
 
-# Node.js (Next.js追加)
+# Node.js (Next.js)
 node_modules/
 .next/
 out/

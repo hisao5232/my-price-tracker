@@ -26,7 +26,7 @@ export default function SearchPage() {
   const fetchKeywords = async () => {
     if (!API_URL) return;
     try {
-      const res = await fetch(`${API_URL}/keywords`, {
+      const res = await fetch(new URL("/keywords", API_URL).toString(), {
         headers: getHeaders(),
       });
       if (!res.ok) throw new Error(`取得失敗: ${res.status}`);

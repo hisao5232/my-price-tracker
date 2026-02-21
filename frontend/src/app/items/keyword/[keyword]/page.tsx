@@ -18,21 +18,29 @@ interface Item {
 
 export default function KeywordItemsPage() {
   const params = useParams();
-  // params.keyword が存在するかチェック
   const keyword = params?.keyword ? decodeURIComponent(params.keyword as string) : "";
   
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // 環境変数の取得
   const API_URL = process.env.NEXT_PUBLIC_API_URL;
+  const API_KEY = process.env.NEXT_PUBLIC_API_KEY;
 
   useEffect(() => {
-    if (!keyword) return;
+    if (!keyword || !API_URL) return;
 
     const fetchKeywordItems = async () => {
       try {
-        const response = await fetch(`${API_URL}/items/keyword/${encodeURIComponent(keyword)}`);
-        if (!response.ok) throw new Error('Fetch failed');
+        const response = await fetch(`${API_URL}/items/keyword/${encodeURIComponent(keyword)}`, {
+          // ★ ここに認証ヘッダーを追加
+          headers: {
+            "Content-Type": "application/json",
+            "X-API-KEY": API_KEY || "", 
+          },
+        });
+        
+        if (!response.ok) throw new Error(`Fetch failed: ${response.status}`);
         const data = await response.json();
         setItems(data);
       } catch (error) {
@@ -42,14 +50,14 @@ export default function KeywordItemsPage() {
       }
     };
     fetchKeywordItems();
-  }, [keyword, API_URL]);
+  }, [keyword, API_URL, API_KEY]); // API_KEY も依存配列に追加
 
   return (
     <main className="min-h-screen bg-slate-50 font-sans text-slate-900">
       <nav className="bg-white/80 backdrop-blur-md border-b border-slate-200 p-4 sticky top-0 z-30">
         <div className="max-w-6xl mx-auto flex justify-between items-center">
           <div className="flex items-center gap-4">
-            <Link href="/" className="text-slate-400 hover:text-blue-600 transition-colors">
+            <Link href="/search" className="text-slate-400 hover:text-blue-600 transition-colors">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
@@ -96,6 +104,12 @@ export default function KeywordItemsPage() {
                 </div>
               </a>
             ))}
+          </div>
+        )}
+        
+        {!loading && items.length === 0 && (
+          <div className="text-center py-20 bg-white rounded-3xl border border-slate-200">
+            <p className="text-slate-400 font-bold">該当する商品はまだ見つかっていません。<br/>バックエンドでの巡回をお待ちください。</p>
           </div>
         )}
       </div>

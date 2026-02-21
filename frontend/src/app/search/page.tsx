@@ -42,7 +42,8 @@ export default function SearchPage() {
   }, [API_URL]);
 
   // キーワード登録処理
-  const handleRegister = async () => {
+  const handleRegister = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault(); // これが「勝手にページ更新（URLに?を付ける）」を防ぎます
     if (!keyword.trim() || isRegistering || !API_URL) return;
     setIsRegistering(true);
     try {
@@ -108,7 +109,7 @@ export default function SearchPage() {
             placeholder="例: DSライト 27.5"
             className="flex-1 bg-transparent border-none rounded-2xl px-6 py-4 outline-none font-bold text-lg placeholder:text-slate-300"
           />
-          <button
+          <button type="button"
             onClick={handleRegister}
             disabled={isRegistering || !keyword}
             className={`px-10 py-4 rounded-2xl font-black text-white transition-all active:scale-95 flex items-center justify-center gap-2

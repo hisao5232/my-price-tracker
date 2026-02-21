@@ -1,5 +1,4 @@
 "use client";
-
 import { useState, useEffect } from "react";
 import Link from "next/link";
 
@@ -12,14 +11,25 @@ export default function SearchPage() {
   const [keyword, setKeyword] = useState("");
   const [savedKeywords, setSavedKeywords] = useState<SavedKeyword[]>([]);
   const [isRegistering, setIsRegistering] = useState(false);
-  
+
+  // 環境変数の取得
   const API_URL = process.env.NEXT_PUBLIC_API_URL;
+  const API_KEY = process.env.NEXT_PUBLIC_API_KEY;
+
+  // 共通のヘッダー設定（APIキー認証用）
+  const getHeaders = () => ({
+    "Content-Type": "application/json",
+    "X-API-KEY": API_KEY || "", // バックエンドの verify_api_key に対応
+  });
 
   // 保存済みキーワードの読み込み
   const fetchKeywords = async () => {
+    if (!API_URL) return;
     try {
-      const res = await fetch(`${API_URL}/keywords`);
-      if (!res.ok) throw new Error("取得失敗");
+      const res = await fetch(`${API_URL}/keywords`, {
+        headers: getHeaders(),
+      });
+      if (!res.ok) throw new Error(`取得失敗: ${res.status}`);
       const data = await res.json();
       setSavedKeywords(data);
     } catch (err) {
@@ -33,44 +43,53 @@ export default function SearchPage() {
 
   // キーワード登録処理
   const handleRegister = async () => {
-    if (!keyword.trim() || isRegistering) return;
-    
+    if (!keyword.trim() || isRegistering || !API_URL) return;
     setIsRegistering(true);
     try {
       const res = await fetch(`${API_URL}/keywords`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getHeaders(),
         body: JSON.stringify({ keyword: keyword.trim() }),
       });
       
       if (res.ok) {
         setKeyword("");
         await fetchKeywords(); // リストを最新に更新
+      } else {
+        const errorData = await res.json();
+        alert(`登録に失敗しました: ${errorData.detail || 'Unknown error'}`);
       }
     } catch (err) {
-      alert("登録に失敗しました");
+      console.error("Registration error:", err);
+      alert("通信エラーが発生しました");
     } finally {
       setIsRegistering(false);
     }
   };
 
-  // キーワード削除処理（利便性のために追加）
+  // キーワード削除処理
   const handleDelete = async (e: React.MouseEvent, id: number) => {
     e.preventDefault(); // Linkの遷移を防止
-    if (!confirm("このキーワードを削除しますか？")) return;
-
+    if (!confirm("このキーワードを削除しますか？") || !API_URL) return;
     try {
-      await fetch(`${API_URL}/keywords/${id}`, { method: "DELETE" });
-      fetchKeywords();
+      const res = await fetch(`${API_URL}/keywords/${id}`, { 
+        method: "DELETE",
+        headers: getHeaders(),
+      });
+      if (res.ok) {
+        await fetchKeywords();
+      } else {
+        alert("削除に失敗しました");
+      }
     } catch (err) {
-      alert("削除に失敗しました");
+      console.error("Delete error:", err);
+      alert("削除中にエラーが発生しました");
     }
   };
 
   return (
     <main className="min-h-screen bg-slate-50 p-6 md:p-12 font-sans text-slate-900">
       <div className="max-w-5xl mx-auto">
-        
         {/* ヘッダーエリア */}
         <header className="mb-12">
           <h1 className="text-4xl font-black italic tracking-tighter text-slate-900 mb-2">
@@ -81,15 +100,15 @@ export default function SearchPage() {
 
         {/* 入力エリア */}
         <div className="bg-white p-2 rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100 mb-16 flex flex-col md:flex-row gap-2 transition-all focus-within:ring-4 focus-within:ring-blue-100">
-          <input 
-            type="text" 
+          <input
+            type="text"
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleRegister()}
             placeholder="例: DSライト 27.5"
             className="flex-1 bg-transparent border-none rounded-2xl px-6 py-4 outline-none font-bold text-lg placeholder:text-slate-300"
           />
-          <button 
+          <button
             onClick={handleRegister}
             disabled={isRegistering || !keyword}
             className={`px-10 py-4 rounded-2xl font-black text-white transition-all active:scale-95 flex items-center justify-center gap-2
@@ -108,7 +127,7 @@ export default function SearchPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {savedKeywords.map((k) => (
             <div key={k.id} className="relative group">
-              <Link 
+              <Link
                 href={`/items/keyword/${encodeURIComponent(k.keyword)}`}
                 className="block h-full bg-white p-8 rounded-[2rem] border border-slate-200 shadow-sm hover:shadow-2xl hover:-translate-y-2 transition-all duration-500 relative overflow-hidden"
               >
@@ -120,15 +139,13 @@ export default function SearchPage() {
                     </div>
                     <h2 className="text-2xl font-black text-slate-800 leading-tight break-all">{k.keyword}</h2>
                   </div>
-                  
                   <div className="mt-8 flex items-center text-blue-600 font-bold text-sm">
-                    VIEW ITEMS 
+                    VIEW ITEMS
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 ml-1 group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7" />
                     </svg>
                   </div>
                 </div>
-
                 {/* 背景の装飾的なサーチアイコン */}
                 <div className="absolute -right-6 -bottom-6 text-slate-50 group-hover:text-blue-50/50 transition-colors duration-500">
                    <svg xmlns="http://www.w3.org/2000/svg" className="h-32 w-32" fill="currentColor" viewBox="0 0 24 24">
@@ -136,9 +153,8 @@ export default function SearchPage() {
                    </svg>
                 </div>
               </Link>
-              
-              {/* 削除ボタン（カードの右上に浮かせる） */}
-              <button 
+              {/* 削除ボタン */}
+              <button
                 onClick={(e) => handleDelete(e, k.id)}
                 className="absolute top-4 right-4 z-20 p-2 bg-slate-100 text-slate-400 rounded-full opacity-0 group-hover:opacity-100 hover:bg-red-100 hover:text-red-500 transition-all duration-300"
                 title="削除"
